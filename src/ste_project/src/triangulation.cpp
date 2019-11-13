@@ -15,6 +15,7 @@
 
 int main(int argc, char **argv)
 {
+	// All distance are in meters
 	if (argc != 7) {
 		std::cout << "Usage: rosrun ste_project mesh_creator <in_ply_file> <out_folder> <resolution> <scale1> <scale2> <segradius>" << std::endl;
 		exit(EXIT_FAILURE);
@@ -23,15 +24,17 @@ int main(int argc, char **argv)
 	std::string in_ply_name(argv[1]);
 	std::string out_dir_name(argv[2]);
 
-	double resolution = std::atof(argv[3]);
-	double small_scale = std::atof(argv[4]);
-	double large_scale = std::atof(argv[5]);
-	double segradius = std::atof(argv[6]);
+	double resolution = std::atof(argv[3]);		// 0.02
+	double small_scale = std::atof(argv[4]);	// 0.03
+	double large_scale = std::atof(argv[5]);	// 0.04
+	double segradius = std::atof(argv[6]);		// 0.05
 
 	pcl::PointCloud<pcl::PointXYZ>::Ptr in_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
 	// Step 1: Load from ply file to in_cloud
 	pcl::io::loadPLYFile(in_ply_name, *in_cloud);
+
+	std::cout << "Number of points = " << in_cloud->points.size() << std::endl;
 
 	// Step 1.5: Downsampling in_cloud
 	pcl::PointCloud<pcl::PointXYZ>::Ptr down_sampled_cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -40,6 +43,11 @@ int main(int argc, char **argv)
 	ds_filter.setInputCloud(in_cloud);
 	ds_filter.setLeafSize(resolution, resolution, resolution);
 	ds_filter.filter(*down_sampled_cloud);
+
+	std::cout << "Number of downsampled points = " << down_sampled_cloud->size() << std::endl;
+	// Test no downsampling
+	//down_sampled_cloud = in_cloud;
+
 
 	// Step 2: Estimate normals
 	pcl::search::Search<pcl::PointXYZ>::Ptr tree;
@@ -95,7 +103,7 @@ int main(int argc, char **argv)
 
 	ec.setClusterTolerance(segradius);
 	ec.setMinClusterSize(50);
-	ec.setMaxClusterSize(100000);
+	ec.setMaxClusterSize(1000000);
 	ec.setSearchMethod(segtree);
 	ec.setInputCloud(don_cloud);
 	ec.extract(cluster_indices);
@@ -113,6 +121,8 @@ int main(int argc, char **argv)
 		}
 
 		pcl::concatenateFields(*cloud_cluster, *normal_cluster, *cloud_with_normal);
+
+		std::cout << "Number of points in cloud " << j << " is " << cloud_with_normal->size() << std::endl;
 		// Triangulation
 		// Create search tree*
 		pcl::search::KdTree<pcl::PointNormal>::Ptr tree2 (new pcl::search::KdTree<pcl::PointNormal>);

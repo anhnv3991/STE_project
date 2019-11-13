@@ -104,7 +104,7 @@ find_package(PCL REQUIRED)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  		INCLUDE_DIRS include
+#  		INCLUDE_DIRS include
   		DEPENDS PCL
 #  LIBRARIES ste_project
 #  CATKIN_DEPENDS roscpp std_msgs
@@ -138,7 +138,8 @@ include_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/ste_project_node.cpp)
 
-add_executable(mesh_creator src/mesh_creator.cpp)
+add_executable(triangulation src/triangulation.cpp)
+add_executable(convex_hull src/convex_hull.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -151,9 +152,14 @@ add_executable(mesh_creator src/mesh_creator.cpp)
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(mesh_creator
+target_link_libraries(triangulation
   	${catkin_LIBRARIES}
   	${PCL_LIBRARIES}
+)
+
+target_link_libraries(convex_hull
+	${catkin_LIBRARIES}
+	${PCL_LIBRARIES}
 )
 
 #############
