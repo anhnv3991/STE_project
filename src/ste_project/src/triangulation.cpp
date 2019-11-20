@@ -16,8 +16,8 @@
 int main(int argc, char **argv)
 {
 	// All distance are in meters
-	if (argc != 7) {
-		std::cout << "Usage: rosrun ste_project mesh_creator <in_ply_file> <out_folder> <resolution> <scale1> <scale2> <segradius>" << std::endl;
+	if (argc != 8) {
+		std::cout << "Usage: rosrun ste_project mesh_creator <in_ply_file> <out_folder> <resolution> <scale1> <scale2> <segradius> <triangulation_radius>" << std::endl;
 		exit(EXIT_FAILURE);
 	}
 
@@ -28,6 +28,7 @@ int main(int argc, char **argv)
 	double small_scale = std::atof(argv[4]);	// 0.03
 	double large_scale = std::atof(argv[5]);	// 0.04
 	double segradius = std::atof(argv[6]);		// 0.05
+	double triangulation_rad = std::atof(argv[7]);	// 0.1
 
 	pcl::PointCloud<pcl::PointXYZ>::Ptr in_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
@@ -133,15 +134,15 @@ int main(int argc, char **argv)
 		pcl::PolygonMesh triangles;
 
 		// Set the maximum distance between connected points (maximum edge length)
-		gp3.setSearchRadius (0.1);
+		gp3.setSearchRadius (triangulation_rad);	// Default 0.1
 
 		// Set typical values for the parameters
-		gp3.setMu (2.5);
-		gp3.setMaximumNearestNeighbors (100);
-		gp3.setMaximumSurfaceAngle(M_PI/4); // 45 degrees
-		gp3.setMinimumAngle(M_PI/18); // 10 degrees
-		gp3.setMaximumAngle(2*M_PI/3); // 120 degrees
-		gp3.setNormalConsistency(false);
+		gp3.setMu (3);	// Default 2.5
+		gp3.setMaximumNearestNeighbors (100);	// Default 100
+		gp3.setMaximumSurfaceAngle(M_PI/4); 	// Default M_PI/4 = 45 degrees
+		gp3.setMinimumAngle(M_PI/18); 			// Default M_PI/18 = 10 degrees
+		gp3.setMaximumAngle(2*M_PI/3); 			// Default 2 * M_PI / 3 =  120 degrees
+		gp3.setNormalConsistency(false);		// Default false
 
 		// Get result
 		gp3.setInputCloud (cloud_with_normal);
