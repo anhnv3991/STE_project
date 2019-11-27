@@ -13,44 +13,19 @@
 #include <stdlib.h>
 #include <vector>
 
-int main(int argc, char **argv)
+void downsampling(const pcl::PointCloud<pcl::PointXYZ>::Ptr &in_cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr &out_cloud, double resolution)
 {
-	// All distance are in meters
-	if (argc != 8) {
-		std::cout << "Usage: rosrun ste_project mesh_creator <in_ply_file> <out_folder> <resolution> <scale1> <scale2> <segradius> <triangulation_radius>" << std::endl;
-		exit(EXIT_FAILURE);
-	}
-
-	std::string in_ply_name(argv[1]);
-	std::string out_dir_name(argv[2]);
-
-	double resolution = std::atof(argv[3]);		// 0.02
-	double small_scale = std::atof(argv[4]);	// 0.03
-	double large_scale = std::atof(argv[5]);	// 0.04
-	double segradius = std::atof(argv[6]);		// 0.05
-	double triangulation_rad = std::atof(argv[7]);	// 0.1
-
-	pcl::PointCloud<pcl::PointXYZ>::Ptr in_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-
-	// Step 1: Load from ply file to in_cloud
-	pcl::io::loadPLYFile(in_ply_name, *in_cloud);
-
-	std::cout << "Number of points = " << in_cloud->points.size() << std::endl;
-
-	// Step 1.5: Downsampling in_cloud
-	pcl::PointCloud<pcl::PointXYZ>::Ptr down_sampled_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 	pcl::VoxelGrid<pcl::PointXYZ> ds_filter;
 
 	ds_filter.setInputCloud(in_cloud);
 	ds_filter.setLeafSize(resolution, resolution, resolution);
-	ds_filter.filter(*down_sampled_cloud);
+	ds_filter.filter(*out_cloud);
+}
 
-	std::cout << "Number of downsampled points = " << down_sampled_cloud->size() << std::endl;
-	// Test no downsampling
-	//down_sampled_cloud = in_cloud;
-
-
-	// Step 2: Estimate normals
+void segmentation(const pcl::PointCloud<pcl::PointXYZ>::Ptr &in_cloud, std::vector<pcl::PointIndices> &cluster_indices,
+					pcl::PointCloud<pcl::Normal>::Ptr &normal_small_scale, pcl::PointCloud<pcl::Normal>::Ptr &normal_large_scale,
+					double small_scale, double large_scale, double segradius)
+{
 	pcl::search::Search<pcl::PointXYZ>::Ptr tree;
 
 	if (in_cloud->isOrganized()) {
@@ -59,14 +34,12 @@ int main(int argc, char **argv)
 		tree.reset(new pcl::search::KdTree<pcl::PointXYZ>(false));
 	}
 
-	tree->setInputCloud(down_sampled_cloud);
+	tree->setInputCloud(in_cloud);
 
 	pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> ne;
-	pcl::PointCloud<pcl::Normal>::Ptr normal_small_scale(new pcl::PointCloud<pcl::Normal>);
-	pcl::PointCloud<pcl::Normal>::Ptr normal_large_scale(new pcl::PointCloud<pcl::Normal>);
 
-	ne.setInputCloud(down_sampled_cloud);
-	ne.setSearchMethod(tree);;
+	ne.setInputCloud(in_cloud);
+	ne.setSearchMethod(tree);
 	ne.setViewPoint(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
 
 	// Compute small scale normals
@@ -79,11 +52,11 @@ int main(int argc, char **argv)
 
 	// Compute DoN
 	pcl::PointCloud<pcl::PointNormal>::Ptr don_cloud(new pcl::PointCloud<pcl::PointNormal>);
-	pcl::copyPointCloud(*down_sampled_cloud, *don_cloud);
+	pcl::copyPointCloud(*in_cloud, *don_cloud);
 
 	pcl::DifferenceOfNormalsEstimation<pcl::PointXYZ, pcl::Normal, pcl::PointNormal> don;
 
-	don.setInputCloud(down_sampled_cloud);
+	don.setInputCloud(in_cloud);
 	don.setNormalScaleLarge(normal_large_scale);
 	don.setNormalScaleSmall(normal_small_scale);
 
@@ -99,7 +72,6 @@ int main(int argc, char **argv)
 
 	segtree->setInputCloud(don_cloud);
 
-	std::vector<pcl::PointIndices> cluster_indices;
 	pcl::EuclideanClusterExtraction<pcl::PointNormal> ec;
 
 	ec.setClusterTolerance(segradius);
@@ -108,6 +80,79 @@ int main(int argc, char **argv)
 	ec.setSearchMethod(segtree);
 	ec.setInputCloud(don_cloud);
 	ec.extract(cluster_indices);
+}
+
+void createTriangulationMesh(const pcl::PointCloud<pcl::PointNormal>::Ptr &in_cloud, pcl::PolygonMesh &mesh,
+								double radius)
+{
+	// Create search tree*
+	pcl::search::KdTree<pcl::PointNormal>::Ptr tree(new pcl::search::KdTree<pcl::PointNormal>);
+	tree->setInputCloud(in_cloud);
+
+	// Initialize objects
+	pcl::GreedyProjectionTriangulation<pcl::PointNormal> gp3;
+
+	// Set the maximum distance between connected points (maximum edge length of a triangle)
+	gp3.setSearchRadius(radius);			// Default 0.1
+
+	// Set typical values for the parameters
+	gp3.setMu(2.5);	// Default 2.5
+	gp3.setMaximumNearestNeighbors(100);	// Default 100
+	gp3.setMaximumSurfaceAngle(M_PI / 4); 	// Default M_PI/4 = 45 degrees
+	gp3.setMinimumAngle(M_PI / 18); 		// Default M_PI/18 = 10 degrees
+	gp3.setMaximumAngle(2 * M_PI / 3); 		// Default 2 * M_PI / 3 =  120 degrees
+	gp3.setNormalConsistency(false);		// Default false
+
+	// Get result
+	gp3.setInputCloud(in_cloud);
+	gp3.setSearchMethod(tree);
+	gp3.reconstruct(mesh);
+}
+
+int main(int argc, char **argv)
+{
+	// All distance are in meters
+	if (argc != 8) {
+		std::cout << "Usage: rosrun ste_project triangulation <in_ply_file> <out_folder> <resolution(m)> <small_scale(m)> <large_scale(m)> <segradius(m)> <triangulation_radius(m)>" << std::endl;
+		exit(EXIT_FAILURE);
+	}
+
+	std::string in_ply_name(argv[1]);
+	std::string out_dir_name(argv[2]);
+
+	/* Size of a voxel in downsampling, larger means less points remain, default 0.02 */
+	double resolution = std::atof(argv[3]);
+
+	/* Small radius of the normal estimation, default 0.03 */
+	double small_scale = std::atof(argv[4]);
+
+	/* Large radius of the normal estimation, default 0.04 */
+	double large_scale = std::atof(argv[5]);
+
+	/* Threshold of the different of normals segmentation, default 0.05 */
+	double segradius = std::atof(argv[6]);
+
+	/* Maximum length of a triangle in triangulation, default 0.1 */
+	double triangulation_rad = std::atof(argv[7]);
+
+	pcl::PointCloud<pcl::PointXYZ>::Ptr in_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+	// Step 1: Load from ply file to in_cloud
+	pcl::io::loadPLYFile(in_ply_name, *in_cloud);
+	std::cout << "Number of points = " << in_cloud->size() << std::endl;
+
+	// Step 1.5: Downsampling in_cloud
+	pcl::PointCloud<pcl::PointXYZ>::Ptr down_sampled_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+	downsampling(in_cloud, down_sampled_cloud, resolution);
+
+	// Step 2: Segmentation
+	std::vector<pcl::PointIndices> cluster_indices;
+	pcl::PointCloud<pcl::Normal>::Ptr normal_small_scale(new pcl::PointCloud<pcl::Normal>);
+	pcl::PointCloud<pcl::Normal>::Ptr normal_large_scale(new pcl::PointCloud<pcl::Normal>);
+
+	segmentation(down_sampled_cloud, cluster_indices, normal_small_scale, normal_large_scale,
+					small_scale, large_scale, segradius);
 
 	int j = 0;
 
@@ -117,37 +162,17 @@ int main(int argc, char **argv)
 		pcl::PointCloud<pcl::PointNormal>::Ptr cloud_with_normal(new pcl::PointCloud<pcl::PointNormal>);
 
 		for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); ++pit) {
-			normal_cluster->points.push_back(normal_small_scale->points[*pit]);
-			cloud_cluster->points.push_back(down_sampled_cloud->points[*pit]);
+			normal_cluster->push_back(normal_small_scale->points[*pit]);
+			cloud_cluster->push_back(down_sampled_cloud->points[*pit]);
 		}
 
 		pcl::concatenateFields(*cloud_cluster, *normal_cluster, *cloud_with_normal);
 
 		std::cout << "Number of points in cloud " << j << " is " << cloud_with_normal->size() << std::endl;
 		// Triangulation
-		// Create search tree*
-		pcl::search::KdTree<pcl::PointNormal>::Ptr tree2 (new pcl::search::KdTree<pcl::PointNormal>);
-		tree2->setInputCloud (cloud_with_normal);
-
-		// Initialize objects
-		pcl::GreedyProjectionTriangulation<pcl::PointNormal> gp3;
 		pcl::PolygonMesh triangles;
 
-		// Set the maximum distance between connected points (maximum edge length)
-		gp3.setSearchRadius (triangulation_rad);	// Default 0.1
-
-		// Set typical values for the parameters
-		gp3.setMu (3);	// Default 2.5
-		gp3.setMaximumNearestNeighbors (100);	// Default 100
-		gp3.setMaximumSurfaceAngle(M_PI/4); 	// Default M_PI/4 = 45 degrees
-		gp3.setMinimumAngle(M_PI/18); 			// Default M_PI/18 = 10 degrees
-		gp3.setMaximumAngle(2*M_PI/3); 			// Default 2 * M_PI / 3 =  120 degrees
-		gp3.setNormalConsistency(false);		// Default false
-
-		// Get result
-		gp3.setInputCloud (cloud_with_normal);
-		gp3.setSearchMethod (tree2);
-		gp3.reconstruct (triangles);
+		createTriangulationMesh(cloud_with_normal, triangles, triangulation_rad);
 
 		std::stringstream ss;
 
@@ -156,6 +181,13 @@ int main(int argc, char **argv)
 
 		pcl::io::saveVTKFile(ss.str(), triangles);
 
+		// Save to OBJ File
+
+		ss.str("");
+
+		ss << out_dir_name << "mesh_" << j << ".obj";
+
+		pcl::io::saveOBJFile(ss.str(), triangles);
 	}
 
 
