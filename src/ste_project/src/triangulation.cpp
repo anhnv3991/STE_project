@@ -13,6 +13,12 @@
 #include <stdlib.h>
 #include <vector>
 
+// Fill holes
+#include <pcl/surface/vtk_smoothing/vtk_utils.h>
+#include <vtkSmartPointer.h>
+#include <vtkFillHolesFilter.h>
+#include <vtkPolyData.h>
+
 void downsampling(const pcl::PointCloud<pcl::PointXYZ>::Ptr &in_cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr &out_cloud, double resolution)
 {
 	pcl::VoxelGrid<pcl::PointXYZ> ds_filter;
@@ -109,6 +115,23 @@ void createTriangulationMesh(const pcl::PointCloud<pcl::PointNormal>::Ptr &in_cl
 	gp3.reconstruct(mesh);
 }
 
+
+void fillHoles(const pcl::PolygonMesh &in_mesh, pcl::PolygonMesh &out_mesh, double hole_size)
+{
+	vtkSmartPointer<vtkPolyData> input;
+	pcl::VTKUtils::mesh2vtk(in_mesh, input);
+
+	vtkSmartPointer<vtkFillHolesFilter> fillHolesFilter = vtkSmartPointer<vtkFillHolesFilter>::New();
+
+	fillHolesFilter->SetInputData(input);
+	fillHolesFilter->SetHoleSize(hole_size);
+	fillHolesFilter->Update();
+
+	vtkSmartPointer<vtkPolyData> polyData = fillHolesFilter->GetOutput();
+
+	pcl::VTKUtils::vtk2mesh(polyData, out_mesh);
+}
+
 int main(int argc, char **argv)
 {
 	// All distance are in meters
@@ -181,6 +204,17 @@ int main(int argc, char **argv)
 
 		pcl::io::saveVTKFile(ss.str(), triangles);
 
+		// Fill hole
+		pcl::PolygonMesh less_hole_triangles;
+
+		fillHoles(triangles, less_hole_triangles, triangulation_rad * 10);
+
+		ss.str("");
+
+		ss << out_dir_name << "less_hole_mesh_" << j << ".vtk";
+
+		pcl::io::saveVTKFile(ss.str(), less_hole_triangles);
+
 		// Save to OBJ File
 
 		ss.str("");
@@ -188,6 +222,12 @@ int main(int argc, char **argv)
 		ss << out_dir_name << "mesh_" << j << ".obj";
 
 		pcl::io::saveOBJFile(ss.str(), triangles);
+
+		ss.str("");
+
+		ss << out_dir_name << "less_hole_mesh_" << j << ".obj";
+
+		pcl::io::saveOBJFile(ss.str(), less_hole_triangles);
 	}
 
 
