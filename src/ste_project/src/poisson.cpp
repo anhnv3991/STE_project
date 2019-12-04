@@ -74,13 +74,13 @@ int main (int argc, char* argv[])
 
 	std::string input_name(argv[1]);
 
-	/* Size of each voxel for downsampling using voxel grid, smaller size -> more points remains*/
+	/* Size of each voxel for downsampling using voxel grid, smaller size -> more points remains. Default 0.02 */
 	float resolution = std::atof(argv[3]);
 
-	/* Radius for normal estimation */
+	/* Radius for normal estimation. Default 0.06 */
 	float ne_radius = std::atof(argv[4]);
 
-	/* The deeper the depth is, more polygons remains */
+	/* The deeper the depth is, more polygons remains. Default 6 */
 	int depth = std::atoi(argv[5]);
 
 	pcl::PointCloud<pcl::PointXYZ>::Ptr in_cloud(new pcl::PointCloud<pcl::PointXYZ>);

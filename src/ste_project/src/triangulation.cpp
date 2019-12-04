@@ -200,6 +200,7 @@ int main(int argc, char **argv)
 		std::stringstream ss;
 
 		std::cout << "Triangle num = " << triangles.polygons.size() << std::endl;
+
 		ss << out_dir_name << "mesh_" << j << ".vtk";
 
 		pcl::io::saveVTKFile(ss.str(), triangles);
